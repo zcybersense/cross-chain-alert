@@ -4,3 +4,8 @@ out = "out"
 libs = ["lib"]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[rpc_endpoints]
+ethereum_sepolia = "https://eth-sepolia.g.alchemy.com/v2/LbAUjHiEkiClkibWJ57ThUwpkeYkuK0d"
+base_sepolia = "https://base-sepolia.g.alchemy.com/v2/yKqjgCdmIn6N2is_K3t4mjfY1M0fbuo8"
+
