@@ -1,75 +1,55 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-interface IWormholeRelayer {
-    function sendPayloadToEvm(
-        uint16 targetChain,
-        address targetAddress,
-        bytes memory payload,
-        uint256 receiverValue,
-        uint256 gasLimit
-    ) external payable returns (uint64 sequence);
+import "forge-std/console.sol";
+import "wormhole-solidity-sdk/interfaces/IWormholeRelayer.sol";
+import "wormhole-solidity-sdk/interfaces/IWormholeReceiver.sol";
 
-    function quoteEVMDeliveryPrice(
-        uint16 targetChain,
-        uint256 receiverValue,
-        uint256 gasLimit
-    ) external view returns (
-        uint256 nativePriceQuote,
-        uint256 targetChainRefundPerGasUnused
-    );
-}
-
-contract HelloWormhole {
+contract HelloWormhole is IWormholeReceiver {
+    address public owner;
     IWormholeRelayer public wormholeRelayer;
-    uint256 constant GAS_LIMIT = 50_000;
 
-    event MessageReceived(string message, address sender);
+    event MessageSent(uint16 targetChain, string message);
+    event MessageReceived(uint16 sourceChain, string message);
 
     constructor(address _wormholeRelayer) {
+        owner = msg.sender;
         wormholeRelayer = IWormholeRelayer(_wormholeRelayer);
     }
 
-    function sendMsg(
+    // Sends message to another chain (gasless for sender via relayer)
+    function sendCrossChainMessage(
         uint16 targetChain,
-        address targetAddress,
-        bytes memory payload,
-        uint256 receiverValue,
-        uint256 gasLimit
-    ) public payable {
+        address targetContract,
+        string calldata message
+    ) external payable {
+        require(msg.sender == owner, "Only owner can send");
 
-        (uint256 cost, ) = wormholeRelayer.quoteEVMDeliveryPrice(
+        bytes memory payload = abi.encode(message);
+
+        wormholeRelayer.sendPayloadToEvm{value: msg.value}(
             targetChain,
-            0,
-            GAS_LIMIT
-        );
-
-        require(msg.value >= cost, "Insufficient relayer fee");
-
-        wormholeRelayer.sendPayloadToEvm{value: cost}(
-            targetChain,
-            targetAddress,
+            targetContract,
             payload,
-            receiverValue,
-            gasLimit
+            0, // receiver value (ETH to deliver)
+            200000 // gas limit for receiving function
         );
-        
-        emit MessageReceived(string(payload), msg.sender);
 
-
-
+        emit MessageSent(targetChain, message);
     }
 
+    // Called automatically by the Wormhole relayer on the destination chain
     function receiveWormholeMessages(
         bytes memory payload,
-        bytes[] memory additionalMessages,
-        bytes32 sourceAddress,
+        bytes[] memory, // additional VAAs (unused)
+        bytes32,        // sourceAddress (unused)
         uint16 sourceChain,
-        bytes32 deliveryHash
-    ) external payable {
+        bytes32         // deliveryHash (unused)
+    ) public payable override {
+        require(msg.sender == address(wormholeRelayer), "Unauthorized caller");
 
-        string memory message = abi.decode(payload, (string));
-        emit MessageReceived(message, address(uint160(uint256(sourceAddress))));
+        string memory receivedMessage = abi.decode(payload, (string));
+        emit MessageReceived(sourceChain, receivedMessage);
     }
 }
 
